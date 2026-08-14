@@ -1,0 +1,98 @@
+services:
+  # PostgreSQL 数据库服务
+  db:
+    image: postgres:15
+    container_name: postgres-questions
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-questions_db}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+  # FastAPI 后端服务
+  backend:
+    build:
+      context: ./backend  # 修正：指向 backend 目录
+      dockerfile: Dockerfile  # 相对于 context（backend/）
+    container_name: backend-api
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    environment:
+      # 数据库配置
+      POSTGRES_SERVER: db  # 使用服务名而不是 localhost
+      POSTGRES_PORT: 5432  # 容器内部端口（PostgreSQL 默认端口）
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-questions_db}
+      
+      # 应用配置
+      SECRET_KEY: ${SECRET_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY}
+      JWKS_PUBLIC_KEY: ${JWKS_PUBLIC_KEY}
+      
+      # 其他配置
+      API_V1_STR: ${API_V1_STR:-/api/v1}
+      PROJECT_NAME: ${PROJECT_NAME:-Questions API}
+    depends_on:
+      db:
+        condition: service_healthy  # 等待数据库健康检查通过
+    volumes:
+      # 开发环境：挂载代码以便热重载（生产环境可移除）
+      - ./backend/app:/app/app  # 修正：相对于主目录
+      - ./backend/alembic.ini:/app/alembic.ini  # 修正：相对于主目录
+      # 注意：不挂载 .venv，使用容器内的虚拟环境
+    networks:
+      - app-network
+    restart: unless-stopped
+    # 开发环境使用 --reload，生产环境移除
+    command: uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # React 前端开发服务
+  frontend-dev:
+    build:
+      context: ./clerk-react
+      dockerfile: Dockerfile.dev
+    container_name: frontend-dev
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+    environment:
+      # 前端环境变量（Vite 在开发模式下会读取这些变量）
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+      VITE_CLERK_PUBLISHABLE_KEY: ${VITE_CLERK_PUBLISHABLE_KEY}
+    depends_on:
+      - backend
+    volumes:
+      # 挂载源代码以便热重载
+      - ./clerk-react/src:/app/src
+      - ./clerk-react/public:/app/public
+      - ./clerk-react/index.html:/app/index.html
+      - ./clerk-react/vite.config.ts:/app/vite.config.ts
+      - ./clerk-react/tsconfig.json:/app/tsconfig.json
+      - ./clerk-react/tsconfig.app.json:/app/tsconfig.app.json
+      - ./clerk-react/tsconfig.node.json:/app/tsconfig.node.json
+      - ./clerk-react/package.json:/app/package.json
+      - ./clerk-react/pnpm-lock.yaml:/app/pnpm-lock.yaml
+      # 排除 node_modules，使用容器内的
+      - /app/node_modules
+    networks:
+      - app-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  app-network:
+    driver: bridge
+

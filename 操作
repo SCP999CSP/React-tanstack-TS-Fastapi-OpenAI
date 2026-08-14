@@ -1,0 +1,31 @@
+# Alembic 数据库迁移操作指南
+
+# ========== 首次设置 ==========
+# 1. 首次运行：应用所有现有迁移（创建数据库表）
+uv run alembic upgrade head
+
+# ========== 创建新迁移 ==========
+# 1. 修改模型文件（如 app/models/model.py）
+# 2. 确保数据库已应用最新迁移（运行上面的 upgrade head）
+# 3. 生成新的迁移文件
+uv run alembic revision --autogenerate -m "描述你的更改"
+
+# 4. 检查生成的迁移文件（app/alembic/versions/xxx.py）
+# 5. 应用新迁移
+uv run alembic upgrade head
+
+# ========== 其他常用命令 ==========
+# 查看当前数据库版本
+uv run alembic current
+
+# 查看迁移历史
+uv run alembic history
+
+# 回退到上一个版本
+uv run alembic downgrade -1
+
+# 回退到指定版本
+uv run alembic downgrade <revision_id>
+
+# 查看迁移 SQL（不实际执行）
+uv run alembic upgrade head --sql
